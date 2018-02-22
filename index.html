@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- calling api -->
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+  
+  <script type="text/javascript">
+		var accessToken = "ebefa2dea0534b35ac2b85366d519d3b";
+		var baseUrl = "https://api.api.ai/v1/";
+		$(document).ready(function() {
+			$("#input").keypress(function(event) {
+				if (event.which == 13) {
+					event.preventDefault();
+					send();
+				}
+			});
+			$("#rec").click(function(event) {
+				switchRecognition();
+			});
+		});
+		var recognition;
+		function startRecognition() {
+			recognition = new webkitSpeechRecognition();
+			recognition.onstart = function(event) {
+				updateRec();
+			};
+			recognition.onresult = function(event) {
+				var text = "";
+			    for (var i = event.resultIndex; i < event.results.length; ++i) {
+			    	text += event.results[i][0].transcript;
+			    }
+			    setInput(text);
+				stopRecognition();
+			};
+			recognition.onend = function() {
+				stopRecognition();
+			};
+			recognition.lang = "en-US";
+			recognition.start();
+		}
+	
+		function stopRecognition() {
+			if (recognition) {
+				recognition.stop();
+				recognition = null;
+			}
+			updateRec();
+		}
+		function switchRecognition() {
+			if (recognition) {
+				stopRecognition();
+			} else {
+				startRecognition();
+			}
+		}
+		function setInput(text) {
+			$("#input").val(text);
+			send();
+			
+		}
+		function updateRec() {
+			$("#rec").text(recognition ? "Stop" : "Send");
+		}
+		function send() {
+			var text = $("#input").val();
+			$.ajax({
+				type: "POST",
+				url: baseUrl + "query?v=20150910",
+				contentType: "application/json; charset=utf-8",
+				dataType: "json",
+				headers: {
+					"Authorization": "Bearer " + accessToken
+				},
+				data: JSON.stringify({ query: text, lang: "en", sessionId: "somerandomthing" }),
+				success: function(data) {
+					setResponse(text, JSON.stringify(data, undefined, 2));
+				},
+				error: function() {
+					setResponse("Internal Server Error");
+				}
+			});
+			setResponse("Loading...");
+		}
+		
+    function setResponse(text, val) {
+			$("#response").text(val);
+      data = JSON.parse(val);
+      console.log(text)
+      var convo = { 
+        "ice": {
+          "says": [text],
+          "reply" : [
+            {
+              "question" : [data.result.fulfillment.speech],  // label for the reply option
+              "answer" : "banana1",  // key for the next conversation object
+            }
+          ]
+        }
+      }
+      console.log(convo)
+      chatWindow.talk(convo);
+      $("#input").val('');	
+		}
+	</script>
+	
+  <!-- End call -->
+
+
+	<meta charset="UTF-8">
+	<title>chatbot Project</title>
+
+  <!-- stylesheets are conveniently separated into components -->
+  
+	<!--<link rel="stylesheet" media="all" href="./node_modules/chat-bubble/component/styles/setup.css">
+	<link rel="stylesheet" media="all" href="./node_modules/chat-bubble/component/styles/says.css">
+	<link rel="stylesheet" media="all" href="./node_modules/chat-bubble/component/styles/reply.css">
+	<link rel="stylesheet" media="all" href="./node_modules/chat-bubble/component/styles/typing.css">
+	<link rel="stylesheet" media="all" href="./node_modules/chat-bubble/component/styles/input.css"> 
+	<link rel="stylesheet" media="all" href="../static/styles/setup.css">
+	<link rel="stylesheet" media="all" href="../static/styles/says.css">
+	<link rel="stylesheet" media="all" href="../static/styles/reply.css">
+	<link rel="stylesheet" media="all" href="../static/styles/typing.css">
+  <link rel="stylesheet" media="all" href="../static/styles/input.css">-->
+</head>
+<body>
+<style>
+	/* setup container styles */
+.bubble-container {
+	background: #dcdde0;
+	height: 520px;
+	max-width: 750px;
+	width: 100%;
+	margin: 0 auto;
+	overflow: hidden;
+	position: relative;
+}
+.bubble-wrap {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	right: -17px;
+	padding: 10px calc(17px + 10px) 30px 10px;
+	overflow-y: scroll;
+	-webkit-overflow-scrolling: touch;
+	-webkit-transform: translate3d(0, 0, 0);
+}
+/* optional page styles */
+h1 {
+	text-align: center;
+	font-weight: 300;
+	font-size: 4em;
+	margin: .5em auto 0.15em;
+}
+body {
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	margin: 0;
+}
+
+	/* style user input field */
+.bubble-container .input-wrap {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	color: #2c2c2c;
+}
+.bubble-container .input-wrap textarea {
+	width: calc(100% - 20px);
+	font-family: "Helvetica Neue", Helvetica, sans-serif;
+	color: #2c2c2c;
+	background: rgba(250, 250, 250, 0.95);
+	font-size: 1em;
+	letter-spacing: .5px;
+	font-weight: 400;
+	margin: 10px;
+	border-radius: 15px;
+	border: none;
+	padding: 10px 15px;
+	outline: none;
+	box-shadow: 0 0 0 1px #d0d0d0 inset;
+	line-height: 1.25em;
+}
+.bubble.reply-freeform {
+	margin: 0;
+}
+.bubble.reply.reply-freeform.say .bubble-content .bubble-button {
+	margin-top: 1px;
+	text-align: left;
+}
+.bubble.reply.say.bubble-hidden {
+	margin: 0;
+	transform: scale(0);
+	height: 0;
+}
+/* style user response reply */
+.bubble.reply {
+	background: transparent;
+	box-shadow: none;
+	float: right;
+	position: relative;
+	transform-origin: right top;
+  margin: 8px 0 10px;
+	padding: 0;
+	max-width: 65%;
+}
+.bubble.reply.say {
+/* 
+  min-width: 350px;
+ */
+}
+.bubble.reply .bubble-content {
+	transition: all 200ms;
+}
+.bubble.reply .bubble-content .bubble-button {
+	background: rgba(44, 44, 44, 0.67);
+	color: #fff;
+	padding: 8px 16px;
+	border-radius: 15px 15px 5px 5px;
+	margin-left: 2px;
+	text-align: center;
+	display: inline-block;
+  float: right;
+	cursor: pointer;
+	transition: all 200ms;
+	text-decoration: none;
+	word-break: normal;
+	/* animation-duration: 1s; */
+	animation-name: animate-reply;
+	animation-play-state: paused;
+	animation-fill-mode: forwards;
+	/* opacity: 0; */
+	transform: translate3d(0px, 0px, 0px);
+	animation-delay: -3s;
+-ms-animation-delay: -3;
+-webkit-animation-delay: -3s;
+}
+@keyframes animate-reply {
+    from { opacity: 0 }
+    to { opacity: 1 }
+}
+.bubble.reply.say .bubble-content .bubble-button {
+	animation-play-state: running;
+	margin-top: 3px;
+	min-height: 24px;
+	overflow: hidden;
+}
+
+.bubble.reply .bubble-content .bubble-button:first-child {
+	border-radius: 15px 15px 15px 5px;
+	margin-left: 2px;
+}
+.bubble.reply .bubble-content .bubble-button:last-child,
+.bubble.reply .bubble-content .bubble-button.bubble-pick {
+	border-radius: 15px 15px 5px 15px;
+}
+.bubble.reply.bubble-picked .bubble-content .bubble-button {
+	transform: scale(0) translate3d(0px, 0px, 0px);;
+	padding: 0;
+}
+.bubble.reply:not(.bubble-picked) .bubble-content .bubble-button:hover,
+.bubble.reply .bubble-content .bubble-button.bubble-pick {
+	background: rgba(44, 44, 44, 1);
+	transform: scale(1) translate3d(0px, 0px, 0px);;
+  padding: 8px 16px;
+  height: auto;
+}
+
+/* input fields for bubbles */
+.bubble .bubble-content input {
+	background: linear-gradient(193deg, #1faced, #5592dc 100%) !important;
+	box-shadow: 0 0px 1px 0px #000, 0 -1px 0 0px rgba(255, 255, 255, 0.38) inset;
+	text-shadow: 0 1px rgba(0, 0, 0, 0.35);
+	border: 0;
+	outline: 0;
+}
+.bubble .bubble-content input::-webkit-input-placeholder { /* Chrome/Opera/Safari */
+  color: rgba(255,255,255,.5);
+  text-shadow: none;
+}
+.bubble .bubble-content input::-moz-placeholder { /* Firefox 19+ */
+  color: rgba(255,255,255,.5);
+  text-shadow: none;
+}
+.bubble .bubble-content input:read-only {
+	background: linear-gradient(166deg, #48121d, #0d4058 100%) !important;
+}
+
+/* style bubbles */
+.bubble, .bubble-typing {
+	color: #212121;
+	background: rgba(255, 255, 255, 0.84);
+	padding: 8px 16px;
+	border-radius: 5px 15px 15px 15px;
+	font-weight: 400;
+	text-transform: none;
+	text-align: left;
+	font-size: 16px;
+	letter-spacing: .5px;
+	margin: 0 0 2px 0;
+	max-width: 65%;
+	float: none;
+	clear: both;
+	line-height: 1.5em;
+	word-break: break-word;
+	transform-origin: left top;
+	transition: all 200ms;
+}
+.bubble .bubble-content {
+	transition: opacity 150ms;
+}
+.bubble:not(.say) .bubble-content {
+	opacity: 0;
+}
+.bubble-typing.imagine, .bubble.imagine {
+	transform: scale(0);
+	transition: all 200ms, height 200ms 1s, padding 200ms 1s;
+}
+.bubble.imagine {
+	margin: 0;
+	height: 0;
+	padding: 0;
+}
+
+/* style media that's inside bubbles */
+.bubble .bubble-content img {
+	width: calc(100% + 32px);
+	margin: -8px -16px;
+	overflow: hidden;
+	display: block;
+	border-radius: 5px 15px 15px 15px;
+}
+/* style "loading" or "typing" stae */
+
+.bubble-typing {
+	width: 38px;
+	padding: 12px 16px;
+	height: 8px;
+}
+.dot {
+	background-color: rgb(255,255,255);
+	float: left;
+	height: 7px;
+	margin-left: 4px;
+	width: 7px;
+	animation-name: bounce_dot;
+	animation-duration: 2.24s;
+	animation-iteration-count: infinite;
+	animation-direction: normal;
+	border-radius: 5px;
+}
+.dot_1 { animation-delay: 0.45s; }
+.dot_2 { animation-delay: 1.05s; }
+.dot_3 { animation-delay: 1.35s; }
+@keyframes bounce_dot {
+	0% {}
+	50% { background-color:rgb(0,0,0); }
+	100% {}
+}
+
+</style>
+
+
+<!-- container element for chat window -->
+<div id="chat"></div>
+
+<!-- import the JavaScript file -->
+<!--<script src="./node_modules/chat-bubble/component/Bubbles.js"></script>-->
+<script>
+	// core function
+function Bubbles(container, self, options) {
+  // options
+  options = typeof options !== "undefined" ? options : {}
+  animationTime = options.animationTime || 200 // how long it takes to animate chat bubble, also set in CSS
+  typeSpeed = options.typeSpeed || 5 // delay per character, to simulate the machine "typing"
+  widerBy = options.widerBy || 2 // add a little extra width to bubbles to make sure they don't break
+  sidePadding = options.sidePadding || 6 // padding on both sides of chat bubbles
+  inputCallbackFn = options.inputCallbackFn || false // should we display an input field?
+
+  var standingAnswer = "ice" // remember where to restart convo if interrupted
+
+  var _convo = {} // local memory for conversation JSON object
+  //--> NOTE that this object is only assigned once, per session and does not change for this
+  // 		constructor name during open session.
+
+  // set up the stage
+  container.classList.add("bubble-container")
+  var bubbleWrap = document.createElement("div")
+  bubbleWrap.className = "bubble-wrap"
+  container.appendChild(bubbleWrap)
+
+  // install user input textfield
+  this.typeInput = function(callbackFn) {
+    var inputWrap = document.createElement("div")
+    inputWrap.className = "input-wrap"
+    var inputText = document.createElement("textarea")
+    inputText.setAttribute("placeholder", "Ask me anything...")
+    inputWrap.appendChild(inputText)
+    inputText.addEventListener("keypress", function(e) {
+      // register user input
+      if (e.keyCode == 13) {
+        e.preventDefault()
+        typeof bubbleQueue !== false ? clearTimeout(bubbleQueue) : false // allow user to interrupt the bot
+        var lastBubble = document.querySelectorAll(".bubble.say")
+        lastBubble = lastBubble[lastBubble.length - 1]
+        lastBubble.classList.contains("reply") &&
+        !lastBubble.classList.contains("reply-freeform")
+          ? lastBubble.classList.add("bubble-hidden")
+          : false
+        addBubble(
+          '<span class="bubble-button bubble-pick">' + this.value + "</span>",
+          function() {},
+          "reply reply-freeform"
+        )
+        // callback
+        typeof callbackFn === "function"
+          ? callbackFn({
+              input: this.value,
+              convo: _convo,
+              standingAnswer: standingAnswer
+            })
+          : false
+        this.value = ""
+      }
+    })
+    container.appendChild(inputWrap)
+    bubbleWrap.style.paddingBottom = "100px"
+    inputText.focus()
+  }
+  inputCallbackFn ? this.typeInput(inputCallbackFn) : false
+
+  // init typing bubble
+  var bubbleTyping = document.createElement("div")
+  bubbleTyping.className = "bubble-typing imagine"
+  for (dots = 0; dots < 3; dots++) {
+    var dot = document.createElement("div")
+    dot.className = "dot_" + dots + " dot"
+    bubbleTyping.appendChild(dot)
+  }
+  bubbleWrap.appendChild(bubbleTyping)
+
+  // accept JSON & create bubbles
+  this.talk = function(convo, here) {
+    // all further .talk() calls will append the conversation with additional blocks defined in convo parameter
+    _convo = Object.assign(_convo, convo) // POLYFILL REQUIRED FOR OLDER BROWSERS
+
+    this.reply(_convo[here])
+    here ? (standingAnswer = here) : false
+  }
+  this.reply = function(turn) {
+    turn = typeof turn !== "undefined" ? turn : _convo.ice
+    questionsHTML = ""
+    if (turn.reply !== undefined) {
+      turn.reply.reverse()
+      for (var i = 0; i < turn.reply.length; i++) {
+        ;(function(el, count) {
+          questionsHTML +=
+            '<span class="bubble-button" style="animation-delay: ' +
+            animationTime / 2 * count +
+            'ms" onClick="' +
+            self +
+            ".answer('" +
+            el.answer +
+            "');this.classList.add('bubble-pick')\">" +
+            el.question +
+            "</span>"
+        })(turn.reply[i], i)
+      }
+    }
+    orderBubbles(turn.says, function() {
+      bubbleTyping.classList.remove("imagine")
+      questionsHTML !== ""
+        ? addBubble(questionsHTML, function() {}, "reply")
+        : bubbleTyping.classList.add("imagine")
+    })
+  }
+  // navigate "answers"
+  this.answer = function(key) {
+    var func = function(key) {
+      typeof window[key] === "function" ? window[key]() : false
+    }
+    _convo[key] !== undefined
+      ? (this.reply(_convo[key]), (standingAnswer = key))
+      : func(key)
+  }
+
+  // api for typing bubble
+  this.think = function() {
+    bubbleTyping.classList.remove("imagine")
+    this.stop = function() {
+      bubbleTyping.classList.add("imagine")
+    }
+  }
+
+  // "type" each message within the group
+  var orderBubbles = function(q, callback) {
+    var start = function() {
+      setTimeout(function() {
+        callback()
+      }, animationTime)
+    }
+    var position = 0
+    for (
+      var nextCallback = position + q.length - 1;
+      nextCallback >= position;
+      nextCallback--
+    ) {
+      ;(function(callback, index) {
+        start = function() {
+          addBubble(q[index], callback)
+        }
+      })(start, nextCallback)
+    }
+    start()
+  }
+
+  // create a bubble
+  var bubbleQueue = false
+  var addBubble = function(say, posted, reply) {
+    reply = typeof reply !== "undefined" ? reply : ""
+    // create bubble element
+    var bubble = document.createElement("div")
+    var bubbleContent = document.createElement("span")
+    bubble.className = "bubble imagine " + reply
+    bubbleContent.className = "bubble-content"
+    bubbleContent.innerHTML = say
+    bubble.appendChild(bubbleContent)
+    bubbleWrap.insertBefore(bubble, bubbleTyping)
+    // answer picker styles
+    if (reply !== "") {
+      var bubbleButtons = bubbleContent.querySelectorAll(".bubble-button")
+
+      for (var z = 0; z < bubbleButtons.length; z++) {
+        ;(function(el) {
+          if (!el.parentNode.parentNode.classList.contains("reply-freeform"))
+            el.style.width = el.offsetWidth - sidePadding * 2 + widerBy + "px"
+        })(bubbleButtons[z])
+      }
+      bubble.addEventListener("click", function() {
+        for (var i = 0; i < bubbleButtons.length; i++) {
+          ;(function(el) {
+            el.style.width = 0 + "px"
+            el.classList.contains("bubble-pick") ? (el.style.width = "") : false
+            el.removeAttribute("onclick")
+          })(bubbleButtons[i])
+        }
+        this.classList.add("bubble-picked")
+      })
+    }
+    // time, size & animate
+    wait = animationTime * 2
+    minTypingWait = animationTime * 6
+    if (say.length * typeSpeed > animationTime && reply == "") {
+      wait += typeSpeed * say.length
+      wait < minTypingWait ? (wait = minTypingWait) : false
+      setTimeout(function() {
+        bubbleTyping.classList.remove("imagine")
+      }, animationTime)
+    }
+    setTimeout(function() {
+      bubbleTyping.classList.add("imagine")
+    }, wait - animationTime * 2)
+    bubbleQueue = setTimeout(function() {
+      bubble.classList.remove("imagine")
+      var bubbleWidthCalc = bubbleContent.offsetWidth + widerBy + "px"
+      bubble.style.width = reply == "" ? bubbleWidthCalc : ""
+      bubble.style.width = say.includes("<img src=")
+        ? "50%"
+        : bubble.style.width
+      bubble.classList.add("say")
+      posted()
+      // animate scrolling
+      containerHeight = container.offsetHeight
+      scrollDifference = bubbleWrap.scrollHeight - bubbleWrap.scrollTop
+      scrollHop = scrollDifference / 200
+      var scrollBubbles = function() {
+        for (var i = 1; i <= scrollDifference / scrollHop; i++) {
+          ;(function() {
+            setTimeout(function() {
+              bubbleWrap.scrollHeight - bubbleWrap.scrollTop > containerHeight
+                ? (bubbleWrap.scrollTop = bubbleWrap.scrollTop + scrollHop)
+                : false
+            }, i * 5)
+          })()
+        }
+      }
+      setTimeout(scrollBubbles, animationTime / 2)
+    }, wait + animationTime * 2)
+  }
+}
+
+// below functions are specifically for WebPack-type project that work with import()
+
+// this function automatically adds all HTML and CSS necessary for chat-bubble to function
+function prepHTML(options) {
+  // options
+  var options = typeof options !== "undefined" ? options : {}
+  var container = options.container || "chat" // id of the container HTML element
+	var relative_path = options.relative_path || "./node_modules/chat-bubble/"
+
+  // make HTML container element
+  window[container] = document.createElement("div")
+  window[container].setAttribute("id", container)
+  document.body.appendChild(window[container])
+
+  // style everything
+  var appendCSS = function(file) {
+    var link = document.createElement("link")
+    link.href = file;
+    link.type = "text/css"
+    link.rel = "stylesheet"
+    link.media = "screen,print"
+    document.getElementsByTagName("head")[0].appendChild(link)
+  }
+	appendCSS(relative_path+ "component/styles/input.css");
+	appendCSS(relative_path + "component/styles/reply.css")
+	appendCSS(relative_path + "component/styles/says.css")
+	appendCSS(relative_path + "component/styles/setup.css")
+	appendCSS(relative_path + "component/styles/typing.css")
+
+}
+
+// exports for es6
+exports.Bubbles = Bubbles
+exports.prepHTML = prepHTML
+
+</script>
+
+
+<!-- <script src="../static/bubbles.js"></script>-->
+<script>
+
+var chatWindow = new Bubbles(
+    document.getElementById('chat'), // ...passing HTML container element...
+    "chatWindow" // ...and name of the function as a parameter
+);
+chatWindow.talk({});
+
+</script>
+
+<style>
+    input[type=text] {
+      width: 80%;
+      height: 50px;
+      background-color: #2732c0a9;
+      color: white;
+      /* padding: 14px 20px; */
+      margin: 8px 0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+			font-size: 20px;
+      padding-left: 10px;
+      padding-right: 10px;
+      font-family: "Helvetica Neue", Helvetica, sans-serif;
+      font-weight: 400;
+			-webkit-border-radius: 28;
+			-moz-border-radius: 28;
+			border-radius: 28px;
+    }
+    .reply-container {  
+      height: 60px;
+      max-width: 750px;
+      width: 100%;
+      margin: 0 auto;
+      overflow: hidden;
+      position: relative;
+    }
+	.btn {
+			background: #e35886;
+			background-image: -webkit-linear-gradient(top, #e35886, #b82ba8);
+			background-image: -moz-linear-gradient(top, #e35886, #b82ba8);
+			background-image: -ms-linear-gradient(top, #e35886, #b82ba8);
+			background-image: -o-linear-gradient(top, #e35886, #b82ba8);
+			background-image: linear-gradient(to bottom, #e35886, #b82ba8);
+			-webkit-border-radius: 28;
+			-moz-border-radius: 28;
+			border-radius: 28px;
+			font-family: Georgia;
+			color: #ffffff;
+			font-size: 20px;
+			padding: 10px 20px 10px 20px;
+			text-decoration: none;
+		}
+
+.btn:hover {
+  background: #b82ba8;
+  background-image: -webkit-linear-gradient(top, #b82ba8, #e35886);
+  background-image: -moz-linear-gradient(top, #b82ba8, #e35886);
+  background-image: -ms-linear-gradient(top, #b82ba8, #e35886);
+  background-image: -o-linear-gradient(top, #b82ba8, #e35886);
+  background-image: linear-gradient(to bottom, #b82ba8, #e35886);
+  text-decoration: none;
+}
+    .bubble-container{
+      background: none
+    }
+    body {
+      background: linear-gradient(145deg, #ce0564, #1faced);
+      height: 635px;
+      margin:0;
+      padding:0;
+    }
+</style>
+
+<div class="reply-container">
+    <input id="input" type="text"> <button id="rec" class="btn">Send</button>
+</body>
+</html>
